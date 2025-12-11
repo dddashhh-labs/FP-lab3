@@ -1,0 +1,157 @@
+name: Interpolation Lab CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    name: Build and Test Interpolation
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Install Elan
+      run: |
+        curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
+        echo "$HOME/.elan/bin" >> $GITHUB_PATH
+        
+    - name: Install Lean toolchain
+      run: |
+        if [ -f lean-toolchain ]; then
+          elan toolchain install $(cat lean-toolchain)
+          elan default $(cat lean-toolchain)
+        else
+          elan toolchain install leanprover/lean4:v4.3.0
+          elan default leanprover/lean4:v4.3.0
+        fi
+        
+    - name: Verify installation
+      run: |
+        elan --version
+        lean --version
+        lake --version
+        
+    - name: Cache Lake dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          .lake
+          ~/.elan
+        key: ${{ runner.os }}-lean-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}
+        restore-keys: |
+          ${{ runner.os }}-lean-
+        
+    - name: Update Lake
+      run: lake update
+        
+    - name: Build project
+      run: lake build
+        
+    - name: Test Linear Interpolation (step 0.7)
+      run: |
+        echo ""
+        echo "════════════════════════════════════════"
+        echo "  Linear Interpolation (step 0.7)"
+        echo "════════════════════════════════════════"
+        echo ""
+        cat tests/test_linear.txt | lake exe interpolation --linear --step 0.7
+        
+    - name: Test Linear Interpolation (step 0.5)
+      run: |
+        echo ""
+        echo "════════════════════════════════════════"
+        echo "  Linear Interpolation (step 0.5)"
+        echo "════════════════════════════════════════"
+        echo ""
+        cat tests/test_linear.txt | lake exe interpolation --linear --step 0.5
+        
+    - name: Test Linear Interpolation (step 1.0)
+      run: |
+        echo ""
+        echo "════════════════════════════════════════"
+        echo "  Linear Interpolation (step 1.0)"
+        echo "════════════════════════════════════════"
+        echo ""
+        cat tests/test_combined.txt | lake exe interpolation --linear --step 1.0
+        
+    - name: Test Newton Interpolation (n=4, step=0.5)
+      run: |
+        echo ""
+        echo "════════════════════════════════════════"
+        echo "  Newton Interpolation (n=4, step=0.5)"
+        echo "════════════════════════════════════════"
+        echo ""
+        cat tests/test_newton.txt | lake exe interpolation --newton -n 4 --step 0.5
+        
+    - name: Test Newton Interpolation (n=4, step=1.0)
+      run: |
+        echo ""
+        echo "════════════════════════════════════════"
+        echo "  Newton Interpolation (n=4, step=1.0)"
+        echo "════════════════════════════════════════"
+        echo ""
+        cat tests/test_newton.txt | lake exe interpolation --newton -n 4 --step 1.0
+        
+    - name: Test Newton Advanced (n=4, step=0.5)
+      run: |
+        echo ""
+        echo "════════════════════════════════════════"
+        echo "  Newton Advanced (n=4, step=0.5)"
+        echo "════════════════════════════════════════"
+        echo ""
+        cat tests/test_newton_advanced.txt | lake exe interpolation --newton -n 4 --step 0.5
+        
+    - name: Test Combined Methods (Linear + Newton)
+      run: |
+        echo ""
+        echo "════════════════════════════════════════"
+        echo "  Linear + Newton (Combined)"
+        echo "════════════════════════════════════════"
+        echo ""
+        cat tests/test_combined.txt | lake exe interpolation --linear --newton -n 3 --step 0.5
+        
+    - name: Test with different window sizes
+      run: |
+        echo ""
+        echo "════════════════════════════════════════"
+        echo "  Newton with different window sizes"
+        echo "════════════════════════════════════════"
+        echo ""
+        echo "Window size = 3:"
+        cat tests/test_combined.txt | lake exe interpolation --newton -n 3 --step 1.0
+        echo ""
+        echo "Window size = 5:"
+        cat tests/test_combined.txt | lake exe interpolation --newton -n 5 --step 1.0
+        
+    - name: Display test summary
+      if: success()
+      run: |
+        echo ""
+        echo "════════════════════════════════════════"
+        echo "       All Tests Passed! ✓"
+        echo "════════════════════════════════════════"
+        echo ""
+        echo "✓ Linear Interpolation Tests"
+        echo "✓ Newton Interpolation Tests"
+        echo "✓ Combined Methods Tests"
+        echo "✓ Window Size Variations Tests"
+        echo ""
+        
+    - name: Display failure info
+      if: failure()
+      run: |
+        echo ""
+        echo "════════════════════════════════════════"
+        echo "       Tests Failed! ✗"
+        echo "════════════════════════════════════════"
+        echo ""
+        echo "Please check the logs above for details"
+        echo ""
