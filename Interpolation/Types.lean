@@ -48,29 +48,32 @@ def isFull (window : SlidingWindow) : Bool :=
 theorem add_respects_max_size (window : SlidingWindow) (point : Point) :
     (add window point).points.length ≤ window.maxSize := by
   unfold add
-  simp
+  simp only []
   split
-  · case inl h =>
-    have : (window.points ++ [point]).length = window.points.length + 1 := by
-      simp [List.length_append]
+  · -- case: length > maxSize
     simp [List.length_drop]
-    omega
-  · case inr h =>
-    simp [List.length_append]
-    omega
+    apply Nat.sub_le
+  · -- case: length ≤ maxSize
+    simp [List.length_append, List.length_cons, List.length_nil]
+    intro h
+    exact Nat.le_of_not_lt h
 
 /-- Теорема: если окно было полным, оно останется полным после добавления -/
 theorem full_stays_full (window : SlidingWindow) (point : Point) 
     (h : isFull window) : isFull (add window point) := by
   unfold isFull add
-  simp at h ⊢
+  simp only [] at h ⊢
   split
-  · case inl cond =>
+  · -- case: length > maxSize
     simp [List.length_drop]
-    omega
-  · case inr cond =>
-    simp [List.length_append] at cond
-    omega
+    have : window.points.length = window.maxSize := h
+    simp [this, List.length_append, List.length_cons, List.length_nil]
+  · -- case: length ≤ maxSize
+    intro h_not_gt
+    simp [List.length_append, List.length_cons, List.length_nil] at h_not_gt
+    have : window.points.length = window.maxSize := h
+    simp [this] at h_not_gt
+    exact absurd (Nat.lt_succ_self window.maxSize) h_not_gt
 
 end SlidingWindow
 
