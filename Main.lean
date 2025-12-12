@@ -1,4 +1,5 @@
 -- Main.lean
+import Interpolation.Types
 import Interpolation.Stream
 import Interpolation.CLI
 
@@ -12,6 +13,7 @@ def main (args : List String) : IO UInt32 := do
   | some config =>
     if config.method.isEmpty then
       IO.eprintln "Error: No interpolation method specified"
+      CLI.printHelp
       return 1
     
     for method in config.method do
