@@ -50,13 +50,11 @@ def parseLine (line : String) : Option Point := do
 
 /-- Теорема: парсинг пустой строки возвращает none -/
 theorem parseLine_empty : parseLine "" = none := by
-  unfold parseLine
-  simp [String.trim]
+  rfl
 
 /-- Теорема: parseFloat корректно обрабатывает пустую строку -/
 theorem parseFloat_empty : parseFloat "" = none := by
-  unfold parseFloat
-  simp [String.trim, String.isEmpty]
+  rfl
 
 /-- Теорема: parseFloat детерминирован -/
 theorem parseFloat_deterministic (s : String) :
