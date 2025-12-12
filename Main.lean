@@ -1,8 +1,4 @@
 -- Main.lean
-import Interpolation.Types
-import Interpolation.Linear
-import Interpolation.Newton
-import Interpolation.Parser
 import Interpolation.Stream
 import Interpolation.CLI
 
@@ -16,17 +12,16 @@ def main (args : List String) : IO UInt32 := do
   | some config =>
     if config.method.isEmpty then
       IO.eprintln "Error: No interpolation method specified"
-      CLI.printHelp
       return 1
     
     for method in config.method do
       match method with
       | "linear" =>
-        Stream.processStreamLinear config.step
+        Stream.processLinear config.step config.step_positive
       | "newton" =>
-        Stream.processStreamNewton config.windowSize config.step
-      | "lagrange" =>
-        IO.eprintln "Lagrange interpolation not yet implemented"
+        Stream.processNewton config.windowSize config.step 
+          config.window_positive config.step_positive
       | _ =>
         IO.eprintln s!"Unknown method: {method}"
+    
     return 0
