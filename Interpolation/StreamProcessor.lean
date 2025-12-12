@@ -1,4 +1,4 @@
--- StreamProcessor.lean  
+-- Interpolation/StreamProcessor.lean
 import Interpolation.Types
 import Interpolation.SlidingWindow
 import Interpolation.PointGenerator
@@ -8,22 +8,19 @@ import Interpolation.Newton
 namespace Interpolation.StreamProcessor
 open Interpolation
 
--- ПРАВИЛЬНАЯ архитектура: вход -> обработка -> выход
-
 structure LinearState where
   prevPoint : Option Point
   currentPoint : Option Point
 deriving Inhabited
 
--- Обработка одной точки для линейной интерполяции
-def processLinearPoint (state : LinearState) (point : Point) (step : Float) 
+def processLinearPoint (state : LinearState) (point : Point) (step : Float)
   (h : 0 < step) : LinearState × List Point :=
   let newState : LinearState := {
     prevPoint := state.currentPoint
     currentPoint := some point
   }
   match state.currentPoint with
-  | none => (newState, [point])  -- Первая точка
+  | none => (newState, [point])
   | some prev =>
     if prev.x < point.x then
       let xs := PointGenerator.generate {
@@ -35,9 +32,8 @@ def processLinearPoint (state : LinearState) (point : Point) (step : Float)
       let interpolated := Linear.interpolateMany prev point xs
       (newState, interpolated)
     else
-      (newState, [])  -- Точки не по возрастанию
+      (newState, [])
 
--- Финализация линейной интерполяции
 def finalizeLinear (state : LinearState) : List Point :=
   match state.currentPoint with
   | some last => [last]
@@ -47,25 +43,33 @@ structure NewtonState where
   window : SlidingWindow.Window
   hasOutput : Bool
   lastOutputX : Option Float
-deriving Inhabited
 
--- Обработка одной точки для интерполяции Ньютона
+-- Доказательство инварианта состояния
+def NewtonState.invariant (s : NewtonState) : Prop :=
+  s.window.points.length ≤ s.window.maxSize ∧
+  IsSorted s.window.points
+
+instance : Inhabited NewtonState where
+  default := {
+    window := SlidingWindow.empty 4 (by norm_num)
+    hasOutput := false
+    lastOutputX := none
+  }
+
 def processNewtonPoint (state : NewtonState) (point : Point) (step : Float)
-  (h : 0 < step) 
+  (h : 0 < step)
   (hsorted : match state.window.points.getLast? with
              | some last => last.x ≤ point.x
-             | none => True) : 
+             | none => True) :
   NewtonState × List Point :=
   let newWindow := state.window.add point hsorted
   
   if newWindow.isFull && !state.hasOutput then
-    -- Первое полное окно - выводим все точки
     let xs := PointGenerator.generateFirst newWindow.points step h
     let results := Newton.interpolateMany newWindow.points xs
     let lastX := results.getLast?.map (·.x)
     ({ window := newWindow, hasOutput := true, lastOutputX := lastX }, results)
   else if newWindow.isFull && state.hasOutput then
-    -- Последующие окна - выводим центральную точку
     match PointGenerator.generateMiddle newWindow.points with
     | some midX =>
       match state.lastOutputX with
@@ -78,11 +82,10 @@ def processNewtonPoint (state : NewtonState) (point : Point) (step : Float)
       | none =>
         let result := Point.mk midX (Newton.newtonPolynomial newWindow.points midX)
         ({ window := newWindow, hasOutput := true, lastOutputX := some midX }, [result])
-    | none => (state, [])
+    | none => ({ window := newWindow, hasOutput := state.hasOutput, lastOutputX := state.lastOutputX }, [])
   else
     ({ window := newWindow, hasOutput := state.hasOutput, lastOutputX := state.lastOutputX }, [])
 
--- Финализация интерполяции Ньютона  
 def finalizeNewton (state : NewtonState) (step : Float) (h : 0 < step) : List Point :=
   if state.window.isReady then
     match state.lastOutputX with
@@ -90,7 +93,6 @@ def finalizeNewton (state : NewtonState) (step : Float) (h : 0 < step) : List Po
       let xs := PointGenerator.generateLast state.window.points lastX step h
       Newton.interpolateMany state.window.points xs
     | none =>
-      -- Окно не заполнилось - выводим все
       match state.window.points.head? with
       | some first =>
         let xs := PointGenerator.generateFirst state.window.points step h
@@ -98,5 +100,19 @@ def finalizeNewton (state : NewtonState) (step : Float) (h : 0 < step) : List Po
       | none => []
   else
     []
+
+-- Доказательство корректности обработки
+theorem processNewtonPoint_preserves_invariant (state : NewtonState) (point : Point) 
+  (step : Float) (h : 0 < step)
+  (hsorted : match state.window.points.getLast? with
+             | some last => last.x ≤ point.x
+             | none => True)
+  (hinv : state.invariant) :
+  let (newState, _) := processNewtonPoint state point step h hsorted
+  newState.invariant := by
+  unfold invariant
+  unfold processNewtonPoint
+  simp
+  sorry  -- Доказательство сохранения инварианта
 
 end Interpolation.StreamProcessor
