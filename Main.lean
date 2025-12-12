@@ -22,10 +22,9 @@ def main (args : List String) : IO UInt32 := do
     for method in config.method do
       match method with
       | "linear" =>
-        Stream.processStreamLinear config.step config.stepPositive
+        Stream.processStreamLinear config.step
       | "newton" =>
-        Stream.processStreamNewton config.windowSize config.step 
-          config.windowSizePositive config.stepPositive
+        Stream.processStreamNewton config.windowSize config.step
       | "lagrange" =>
         IO.eprintln "Lagrange interpolation not yet implemented"
       | _ =>
