@@ -1,14 +1,8 @@
 import Lake
 open Lake DSL
 
-package «interpolation» where
-  -- add package configuration options here
-
-lean_lib «Interpolation» where
-  -- Явный порядок компиляции модулей
-  globs := #[.andSubmodules `Interpolation]
+package interpolation
 
 @[default_target]
-lean_exe «interpolation» where
+lean_exe interpolation where
   root := `Main
-  supportInterpreter := true
