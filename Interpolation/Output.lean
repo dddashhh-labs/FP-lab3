@@ -1,7 +1,7 @@
+-- Output.lean
 import Interpolation.Types
 
 namespace Interpolation.Output
-
 open Interpolation
 
 def formatResult (result : InterpolationResult) : String :=
