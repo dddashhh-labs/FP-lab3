@@ -1,14 +1,26 @@
--- Output.lean (печать выходных данных)
 import Interpolation.Types
 
 namespace Interpolation.Output
 open Interpolation
 
-def printPoint (method : String) (point : Point) : IO Unit :=
-  IO.println s!"{method}: {point.x} {point.y}"
+/-- Форматирование результата интерполяции для вывода -/
+def formatResult (result : InterpolationResult) : String :=
+  s!"{result.method}: {result.point.x} {result.point.y}"
 
-def printPoints (method : String) (points : List Point) : IO Unit :=
-  for p in points do
-    printPoint method p
+/-- Вывод списка результатов -/
+def printResults (results : List InterpolationResult) : IO Unit := do
+  for result in results do
+    IO.println (formatResult result)
+
+/-- Вывод одного результата -/
+def printResult (result : InterpolationResult) : IO Unit := do
+  IO.println (formatResult result)
+
+/-- Теорема: форматирование не возвращает пустую строку -/
+theorem formatResult_nonempty (result : InterpolationResult) : 
+    (formatResult result).length > 0 := by
+  unfold formatResult
+  simp
+  sorry -- Требует доказательства для интерполяции строк
 
 end Interpolation.Output
