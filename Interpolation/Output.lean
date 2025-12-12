@@ -1,14 +1,14 @@
--- Output.lean
+-- Output.lean (печать выходных данных)
 import Interpolation.Types
 
 namespace Interpolation.Output
 open Interpolation
 
-def formatResult (result : InterpolationResult) : String :=
-  s!"{result.method}: {result.point.x} {result.point.y}"
+def printPoint (method : String) (point : Point) : IO Unit :=
+  IO.println s!"{method}: {point.x} {point.y}"
 
-def printResults (results : List InterpolationResult) : IO Unit := do
-  for result in results do
-    IO.println (formatResult result)
+def printPoints (method : String) (points : List Point) : IO Unit :=
+  for p in points do
+    printPoint method p
 
 end Interpolation.Output
