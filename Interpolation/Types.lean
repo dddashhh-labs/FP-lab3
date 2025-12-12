@@ -1,45 +1,77 @@
--- Types.lean
 namespace Interpolation
 
+/-- Точка на плоскости -/
 structure Point where
   x : Float
   y : Float
 deriving Repr, BEq, Inhabited
 
--- Доказательство корректности конфигурации
+/-- Конфигурация программы из аргументов командной строки -/
 structure Config where
   method : List String
   step : Float
   windowSize : Nat
-  step_positive : 0 < step
-  window_positive : 0 < windowSize
+deriving Repr, Inhabited
 
-instance : Inhabited Config where
-  default := {
-    method := []
-    step := 1.0
-    windowSize := 4
-    step_positive := by norm_num
-    window_positive := by norm_num
-  }
-
+/-- Результат интерполяции -/
 structure InterpolationResult where
   method : String
   point : Point
 deriving Repr
 
--- Доказательство сортированности списка точек
-def IsSorted (points : List Point) : Prop :=
-  ∀ i j, i < j → j < points.length → 
-    match points[i]?, points[j]? with
-    | some pi, some pj => pi.x ≤ pj.x
-    | _, _ => True
+/-- Скользящее окно для потоковой обработки -/
+structure SlidingWindow where
+  points : List Point
+  maxSize : Nat
+deriving Inhabited
 
--- Доказательство, что точка в диапазоне интерполяции
-def InRange (x : Float) (points : List Point) : Prop :=
-  points.length ≥ 2 ∧
-  match points.head?, points.getLast? with
-  | some first, some last => first.x ≤ x ∧ x ≤ last.x
-  | _, _ => False
+namespace SlidingWindow
+
+/-- Добавление точки в окно -/
+def add (window : SlidingWindow) (point : Point) : SlidingWindow :=
+  let newPoints := window.points ++ [point]
+  let finalPoints := if newPoints.length > window.maxSize then
+    newPoints.drop 1
+  else
+    newPoints
+  SlidingWindow.mk finalPoints window.maxSize
+
+/-- Проверка готовности окна (минимум 2 точки) -/
+def isReady (window : SlidingWindow) : Bool :=
+  window.points.length >= 2
+
+/-- Проверка заполненности окна -/
+def isFull (window : SlidingWindow) : Bool :=
+  window.points.length == window.maxSize
+
+/-- Теорема: добавление точки не увеличивает размер окна больше максимума -/
+theorem add_respects_max_size (window : SlidingWindow) (point : Point) :
+    (add window point).points.length ≤ window.maxSize := by
+  unfold add
+  simp
+  split
+  · case inl h =>
+    have : (window.points ++ [point]).length = window.points.length + 1 := by
+      simp [List.length_append]
+    simp [List.length_drop]
+    omega
+  · case inr h =>
+    simp [List.length_append]
+    omega
+
+/-- Теорема: если окно было полным, оно останется полным после добавления -/
+theorem full_stays_full (window : SlidingWindow) (point : Point) 
+    (h : isFull window) : isFull (add window point) := by
+  unfold isFull add
+  simp at h ⊢
+  split
+  · case inl cond =>
+    simp [List.length_drop]
+    omega
+  · case inr cond =>
+    simp [List.length_append] at cond
+    omega
+
+end SlidingWindow
 
 end Interpolation
