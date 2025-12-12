@@ -10,17 +10,10 @@ open Interpolation
 structure SlidingWindow where
   points : List Point
   maxSize : Nat
-  sorted : IsSorted points := by sorry
-  sizeInvariant : points.length ≤ maxSize := by sorry
 deriving Inhabited
 
--- Доказательство сохранения инварианта при добавлении
-theorem add_preserves_sorted (window : SlidingWindow) (point : Point)
-  (h : match window.points.getLast? with
-       | some last => last.x ≤ point.x
-       | none => True) :
-  IsSorted (window.add point).points := by
-  sorry
+def SlidingWindow.empty (maxSize : Nat) : SlidingWindow :=
+  { points := [], maxSize := maxSize }
 
 def SlidingWindow.add (window : SlidingWindow) (point : Point) : SlidingWindow :=
   let newPoints := window.points ++ [point]
@@ -28,10 +21,7 @@ def SlidingWindow.add (window : SlidingWindow) (point : Point) : SlidingWindow :
     newPoints.drop 1
   else
     newPoints
-  { points := finalPoints
-    maxSize := window.maxSize
-    sorted := by sorry
-    sizeInvariant := by sorry }
+  { points := finalPoints, maxSize := window.maxSize }
 
 def SlidingWindow.isReady (window : SlidingWindow) : Bool :=
   window.points.length >= 2
@@ -39,8 +29,8 @@ def SlidingWindow.isReady (window : SlidingWindow) : Bool :=
 def SlidingWindow.isFull (window : SlidingWindow) : Bool :=
   window.points.length == window.maxSize
 
--- Потоковая обработка с доказательствами корректности
-partial def processStreamLinear (step : Float) (hstep : 0 < step := by native_decide) : IO Unit := do
+-- Потоковая обработка линейной интерполяции
+partial def processStreamLinear (step : Float) : IO Unit := do
   let stdin ← IO.getStdin
   let mut prevPoint : Option Point := none
   let mut currentPoint : Option Point := none
@@ -57,8 +47,8 @@ partial def processStreamLinear (step : Float) (hstep : 0 < step := by native_de
         
         match prevPoint, currentPoint with
         | some prev, some curr =>
-          if h : prev.x < curr.x then
-            let interpolated := Linear.generatePoints prev curr step hstep
+          if prev.x < curr.x then
+            let interpolated := Linear.generatePoints prev curr step
             for p in interpolated do
               IO.println s!"linear: {p.x} {p.y}"
           else
@@ -75,16 +65,12 @@ partial def processStreamLinear (step : Float) (hstep : 0 < step := by native_de
   | some last => IO.println s!"linear: {last.x} {last.y}"
   | none => pure ()
 
-partial def processStreamNewton (windowSize : Nat) (step : Float) 
-  (hsize : 0 < windowSize := by native_decide)
-  (hstep : 0 < step := by native_decide) : IO Unit := do
+-- Потоковая обработка интерполяции Ньютона
+partial def processStreamNewton (windowSize : Nat) (step : Float) : IO Unit := do
   let stdin ← IO.getStdin
-  let mut window : SlidingWindow := 
-    { points := []
-      maxSize := windowSize
-      sorted := by simp [IsSorted]
-      sizeInvariant := by simp }
+  let mut window := SlidingWindow.empty windowSize
   let mut hasOutput := false
+  let mut lastOutputX : Option Float := none
   
   repeat
     try
@@ -95,7 +81,8 @@ partial def processStreamNewton (windowSize : Nat) (step : Float)
       | some point =>
         window := window.add point
         
-        if window.isFull ∧ !hasOutput then
+        if window.isFull && !hasOutput then
+          -- Первое окно - выводим все точки от начала до середины
           let points := window.points
           match points.head?, points.getLast? with
           | some first, some last =>
@@ -107,33 +94,38 @@ partial def processStreamNewton (windowSize : Nat) (step : Float)
             let results := generateInitial first.x []
             for p in results do
               IO.println s!"newton: {p.x} {p.y}"
+              lastOutputX := some p.x
             hasOutput := true
           | _, _ => pure ()
-        else if window.isFull ∧ hasOutput then
+        else if window.isFull && hasOutput then
+          -- Последующие окна - выводим только центральную точку
           let points := window.points
           let midIdx := windowSize / 2
-          match points.get? midIdx with
+          match points[midIdx]? with
           | some midPoint =>
-            let y := Newton.newtonPolynomial points midPoint.x
-            IO.println s!"newton: {midPoint.x} {y}"
+            -- Проверяем, не выводили ли мы уже эту точку
+            match lastOutputX with
+            | some lastX =>
+              if midPoint.x > lastX then
+                let y := Newton.newtonPolynomial points midPoint.x
+                IO.println s!"newton: {midPoint.x} {y}"
+                lastOutputX := some midPoint.x
+            | none =>
+              let y := Newton.newtonPolynomial points midPoint.x
+              IO.println s!"newton: {midPoint.x} {y}"
+              lastOutputX := some midPoint.x
           | none => pure ()
       | none =>
         IO.eprintln s!"Warning: Could not parse line: {line}"
     catch _ =>
       break
   
-  -- Финальная обработка
+  -- Финальная обработка - выводим оставшиеся точки
   if window.points.length >= 2 then
     let points := window.points
-    match points.getLast? with
-    | some last =>
-      let startX := if hasOutput then
-        match points.get? (windowSize / 2) with
-        | some p => p.x + step
-        | none => match points.head? with | some p => p.x | none => 0.0
-      else
-        match points.head? with | some p => p.x | none => 0.0
-      
+    match points.getLast?, lastOutputX with
+    | some last, some lastX =>
+      let startX := lastX + step
       let rec generateFinal (x : Float) (acc : List Point) : List Point :=
         if x > last.x then acc.reverse
         else
@@ -142,6 +134,19 @@ partial def processStreamNewton (windowSize : Nat) (step : Float)
       let results := generateFinal startX []
       for p in results do
         IO.println s!"newton: {p.x} {p.y}"
-    | none => pure ()
+    | some last, none =>
+      -- Если не было вывода, выводим все точки
+      match points.head? with
+      | some first =>
+        let rec generateAll (x : Float) (acc : List Point) : List Point :=
+          if x > last.x then acc.reverse
+          else
+            let y := Newton.newtonPolynomial points x
+            generateAll (x + step) (Point.mk x y :: acc)
+        let results := generateAll first.x []
+        for p in results do
+          IO.println s!"newton: {p.x} {p.y}"
+      | none => pure ()
+    | _, _ => pure ()
 
 end Interpolation.Stream
