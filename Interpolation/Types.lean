@@ -56,21 +56,19 @@ theorem length_drop_le {α : Type _} (n : Nat) (l : List α) :
     cases n
     · simp [List.drop]
     · simp [List.drop]
-      have h := ih _
-      apply Nat.le_trans h
-      apply Nat.le_succ
+      exact Nat.le_trans (ih _) (Nat.le_succ _)
 
-/-- Вспомогательная лемма: если a > b, то a ≥ b -/
+/-- Вспомогательная лемма: если не a > b, то a ≤ b -/
 theorem le_of_not_gt {a b : Nat} (h : ¬(a > b)) : a ≤ b := by
-  cases Nat.lt_or_ge a b
-  case inl hlt => exact Nat.le_of_lt hlt
-  case inr hge => 
-    cases Nat.eq_or_lt_of_le hge
-    case inl heq => rw [heq]
-    case inr hgt => 
+  cases Nat.lt_or_ge a b with
+  | inl hlt => exact Nat.le_of_lt hlt
+  | inr hge =>
+    cases Nat.eq_or_lt_of_le hge with
+    | inl heq => 
+      rw [heq]
+    | inr hgt =>
       exfalso
-      apply h
-      exact hgt
+      exact h hgt
 
 /-- Теорема: добавление точки не увеличивает размер окна больше максимума -/
 theorem add_respects_max_size (window : SlidingWindow) (point : Point) :
@@ -80,25 +78,37 @@ theorem add_respects_max_size (window : SlidingWindow) (point : Point) :
   split
   case inl h =>
     -- h : (window.points ++ [point]).length > window.maxSize
-    cases window.points
-    case nil =>
+    cases window.points with
+    | nil =>
       simp [List.drop] at *
-      cases window.maxSize
-      case zero => 
+      cases window.maxSize with
+      | zero => 
         simp at h
-      case succ n =>
+      | succ n =>
         simp at h
-        exact Nat.le_refl _
-    case cons head tail =>
+    | cons head tail =>
       simp [List.drop]
-      have h_len : (head :: tail ++ [point]).length = (head :: tail).length + 1 := by
-        simp [List.length_append]
-      rw [h_len] at h
-      simp [List.length_append]
-      have : tail.length + 1 = (head :: tail).length := by simp
-      rw [← this]
-      apply Nat.le_of_succ_le_succ
-      exact Nat.le_of_lt h
+      have h1 : (head :: tail).length + 1 > window.maxSize := by
+        simp [List.length_append] at h
+        exact h
+      have h2 : tail.length + 1 = (head :: tail).length := by simp
+      rw [List.length_append]
+      simp
+      have h3 : tail.length < window.maxSize := by
+        have : (head :: tail).length > window.maxSize - 1 := by
+          cases window.maxSize with
+          | zero => 
+            simp at h1
+          | succ m =>
+            simp at h1
+            exact h1
+        simp at this
+        cases window.maxSize with
+        | zero => simp at h1
+        | succ m =>
+          simp at h1
+          exact Nat.lt_of_succ_lt h1
+      exact Nat.le_of_lt h3
   case inr h =>
     -- h : ¬(window.points ++ [point]).length > window.maxSize
     exact le_of_not_gt h
@@ -113,26 +123,24 @@ theorem full_stays_full (window : SlidingWindow) (point : Point)
   split
   case inl h_gt =>
     -- h_gt : (window.points ++ [point]).length > window.maxSize
-    cases window.points
-    case nil =>
+    cases window.points with
+    | nil =>
       simp at h_eq
       subst h_eq
-      simp [List.drop] at *
+      simp [List.drop]
       exact h
-    case cons head tail =>
+    | cons head tail =>
       simp [List.drop]
       have h1 : (head :: tail).length = window.maxSize := h_eq
       simp at h1
-      have h2 : (tail ++ [point]).length = tail.length + 1 := by 
-        rw [List.length_append]
-        simp
-      rw [h2, h1]
-      cases window.maxSize
-      case zero => 
+      rw [List.length_append]
+      simp
+      cases window.maxSize with
+      | zero => 
         simp at h1
-      case succ n =>
-        simp
-        exact Nat.eq_of_beq_eq_true rfl
+      | succ n =>
+        simp at h1
+        rw [h1]
   case inr h_not_gt =>
     -- h_not_gt : ¬(window.points ++ [point]).length > window.maxSize
     exfalso
@@ -140,8 +148,8 @@ theorem full_stays_full (window : SlidingWindow) (point : Point)
       rw [List.length_append]
       simp
     rw [h_len, h_eq] at h_not_gt
-    apply h_not_gt
-    exact Nat.lt_succ_self _
+    have : window.maxSize + 1 > window.maxSize := Nat.lt_succ_self _
+    exact h_not_gt this
 
 end SlidingWindow
 
