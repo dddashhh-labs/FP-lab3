@@ -1,4 +1,4 @@
--- CLI.lean (без изменений, но с типобезопасностью)
+-- CLI.lean
 import Interpolation.Types
 import Interpolation.Parser
 
@@ -10,16 +10,13 @@ def parseArgs (args : List String) : Option Config := do
     (step : Float) (windowSize : Nat) : Option Config :=
     match remaining with
     | [] => 
-      if 0 < step ∧ 0 < windowSize then
-        some { method := methods
-               step := step
-               windowSize := windowSize
-               stepPositive := by native_decide
-               windowSizePositive := by native_decide }
-      else none
-    | "--linear" :: rest => aux rest (methods ++ ["linear"]) step windowSize
-    | "--newton" :: rest => aux rest (methods ++ ["newton"]) step windowSize
-    | "--lagrange" :: rest => aux rest (methods ++ ["lagrange"]) step windowSize
+      some { method := methods, step := step, windowSize := windowSize }
+    | "--linear" :: rest => 
+      aux rest (methods ++ ["linear"]) step windowSize
+    | "--newton" :: rest => 
+      aux rest (methods ++ ["newton"]) step windowSize
+    | "--lagrange" :: rest => 
+      aux rest (methods ++ ["lagrange"]) step windowSize
     | "--step" :: s :: rest =>
       match Parser.parseFloat s with
       | some newStep => aux rest methods newStep windowSize
