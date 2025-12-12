@@ -4,11 +4,6 @@ import Interpolation.Types
 namespace Interpolation.Parser
 open Interpolation
 
--- Доказательство корректности парсинга
-theorem parseFloat_some_implies_valid (s : String) (f : Float) :
-  parseFloat s = some f → ∃ n : Nat, f = n.toFloat ∨ ∃ m k : Nat, True := by
-  sorry -- Доказательство опущено для краткости
-
 def parseFloat (s : String) : Option Float :=
   let trimmed := s.trim
   if trimmed.isEmpty then none
@@ -34,13 +29,6 @@ def parseFloat (s : String) : Option Float :=
       | some i => some (if isNeg then -(i.toFloat) else i.toFloat)
       | none => none
     | _ => none
-
--- Доказательство, что парсинг сохраняет порядок
-theorem parseLine_preserves_order (l1 l2 : String) (p1 p2 : Point) :
-  parseLine l1 = some p1 → parseLine l2 = some p2 →
-  p1.x < p2.x → True := by
-  intros _ _ _
-  trivial
 
 def parseLine (line : String) : Option Point := do
   let line := line.trim
