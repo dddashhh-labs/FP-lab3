@@ -1,10 +1,9 @@
--- PointGenerator.lean
+-- Interpolation/PointGenerator.lean
 import Interpolation.Types
 
 namespace Interpolation.PointGenerator
 open Interpolation
 
--- Генератор точек для интерполяции (отдельный компонент!)
 structure Generator where
   start : Float
   stop : Float
@@ -12,40 +11,64 @@ structure Generator where
   step_positive : 0 < step
 deriving Repr
 
--- Доказательство корректности генератора
-theorem generator_produces_sorted (g : Generator) :
-  ∀ points, points = generate g → IsSorted (points.map Point.mk · 0) := by
-  sorry
+-- Вспомогательная функция для генерации с явным доказательством терминации
+def generateAux (current stop step : Float) (h : 0 < step) : List Float :=
+  let rec aux (current : Float) (acc : List Float) (fuel : Nat) : List Float :=
+    match fuel with
+    | 0 => acc.reverse
+    | fuel' + 1 =>
+      if current > stop then acc.reverse
+      else aux (current + step) (current :: acc) fuel'
+  -- Используем большое топливо для гарантии завершения
+  aux current [] 10000
 
--- Генерация последовательности X координат
 def generate (g : Generator) : List Float :=
-  let rec aux (current : Float) (acc : List Float) : List Float :=
-    if current > g.stop then acc.reverse
-    else aux (current + g.step) (current :: acc)
-  aux g.start []
+  generateAux g.start g.stop g.step g.step_positive
 
--- Генератор для первого окна (много точек)
+-- Доказательство монотонности результата
+theorem generate_sorted (g : Generator) (xs : List Float) 
+  (h : xs = generate g) : 
+  ∀ i j, i < j → j < xs.length → 
+    match xs[i]?, xs[j]? with
+    | some xi, some xj => xi ≤ xj
+    | _, _ => True := by
+  intro i j hij hjlen
+  cases hxi : xs[i]?
+  · simp
+  · cases hxj : xs[j]?
+    · simp
+    · simp
+      sorry  -- Доказательство требует индукции по генерации
+
 def generateFirst (points : List Point) (step : Float) (h : 0 < step) : List Float :=
   match points.head?, points.getLast? with
   | some first, some last =>
     generate { start := first.x, stop := last.x, step := step, step_positive := h }
   | _, _ => []
 
--- Генератор для среднего окна (одна центральная точка)
 def generateMiddle (points : List Point) : Option Float :=
   let mid := points.length / 2
   points[mid]?.map (·.x)
 
--- Генератор для последнего окна (оставшиеся точки)
 def generateLast (points : List Point) (lastOutput : Float) (step : Float) (h : 0 < step) : List Float :=
   match points.getLast? with
   | some last =>
-    generate { 
-      start := lastOutput + step, 
-      stop := last.x, 
-      step := step, 
-      step_positive := h 
-    }
+    generate { start := lastOutput + step, stop := last.x, step := step, step_positive := h }
   | none => []
+
+-- Доказательство корректности диапазона
+theorem generateFirst_in_range (points : List Point) (step : Float) (h : 0 < step) :
+  ∀ x ∈ generateFirst points step h,
+    match points.head?, points.getLast? with
+    | some first, some last => first.x ≤ x ∧ x ≤ last.x
+    | _, _ => True := by
+  intro x hx
+  unfold generateFirst at hx
+  cases hhead : points.head?
+  · simp at hx
+  · cases hlast : points.getLast?
+    · simp at hx
+    · simp
+      sorry  -- Доказательство по индукции
 
 end Interpolation.PointGenerator
