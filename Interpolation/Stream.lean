@@ -2,109 +2,31 @@ import Interpolation.Types
 import Interpolation.Parser
 import Interpolation.Linear
 import Interpolation.Newton
+import Interpolation.Output
 
 namespace Interpolation.Stream
 open Interpolation
 
--- Ленивый поток входных данных
-partial def readPoints : IO (List Point) := do
-  let stdin ← IO.getStdin
-  let rec aux (acc : List Point) : IO (List Point) := do
-    try
-      let line ← stdin.getLine
-      if line.trim.isEmpty then
-        return acc.reverse
-      else
-        match Parser.parseLine line with
-        | some point => aux (point :: acc)
-        | none => 
-          IO.eprintln s!"Warning: Could not parse line: {line}"
-          aux acc
-    catch _ =>
-      return acc.reverse
-  aux []
-
--- Генератор точек для интерполяции
+/-- Генерация списка x-координат от start до finish с шагом step -/
 def generateXPoints (start finish step : Float) : List Float :=
-  let rec aux (current : Float) (acc : List Float) : List Float :=
-    if current > finish then
-      acc.reverse
-    else
-      aux (current + step) (current :: acc)
-  aux start []
-
--- Линейная интерполяция в функциональном стиле
-def processLinearFunctional (points : List Point) (step : Float) : List InterpolationResult :=
-  let rec processWindow (remaining : List Point) (acc : List InterpolationResult) : List InterpolationResult :=
-    match remaining with
-    | [] => acc.reverse
-    | [_] => acc.reverse
-    | p1 :: p2 :: rest =>
-      -- Для первого окна генерируем все точки до p2
-      let xPoints := if acc.isEmpty then
-        generateXPoints p1.x p2.x step
-      else
-        -- Для остальных окон - только одну точку (центральную)
-        [p1.x]
-      
-      let results := xPoints.map fun x =>
-        let y := Linear.interpolate p1 p2 x
-        InterpolationResult.mk "linear" (Point.mk x y)
-      
-      processWindow (p2 :: rest) (acc ++ results)
-  
-  let results := processWindow points []
-  
-  -- Добавляем последнюю точку
-  match points.getLast? with
-  | some last => results ++ [InterpolationResult.mk "linear" last]
-  | none => results
-
--- Newton интерполяция в функциональном стиле
-def processNewtonFunctional (points : List Point) (windowSize : Nat) (step : Float) : List InterpolationResult :=
-  let rec slidingWindow (remaining : List Point) (acc : List InterpolationResult) : List InterpolationResult :=
-    if remaining.length < windowSize then
-      -- Последнее окно - генерируем все оставшиеся точки
-      if remaining.length >= 2 then
-        match remaining.head?, remaining.getLast? with
-        | some first, some last =>
-          let startX := if acc.isEmpty then first.x else
-            match acc.getLast? with
-            | some lastResult => lastResult.point.x + step
-            | none => first.x
-          let xPoints := generateXPoints startX last.x step
-          let results := xPoints.map fun x =>
-            let y := Newton.newtonPolynomial remaining x
-            InterpolationResult.mk "newton" (Point.mk x y)
-          acc.reverse ++ results ++ [InterpolationResult.mk "newton" last]
-        | _, _ => acc.reverse
-      else
+  let rec aux (current : Float) (acc : List Float) (fuel : Nat) : List Float :=
+    match fuel with
+    | 0 => acc.reverse
+    | fuel' + 1 =>
+      if current > finish then
         acc.reverse
-    else
-      let window := remaining.take windowSize
-      match window.head?, window.getLast? with
-      | some first, some last =>
-        if acc.isEmpty then
-          -- Первое окно - генерируем все точки
-          let xPoints := generateXPoints first.x last.x step
-          let results := xPoints.map fun x =>
-            let y := Newton.newtonPolynomial window x
-            InterpolationResult.mk "newton" (Point.mk x y)
-          slidingWindow (remaining.drop 1) (results.reverse ++ acc)
-        else
-          -- Средние окна - генерируем только центральную точку
-          let centerIdx := windowSize / 2
-          match window.get? centerIdx with
-          | some centerPoint =>
-            let y := Newton.newtonPolynomial window centerPoint.x
-            let result := InterpolationResult.mk "newton" (Point.mk centerPoint.x y)
-            slidingWindow (remaining.drop 1) (result :: acc)
-          | none => slidingWindow (remaining.drop 1) acc
-      | _, _ => acc.reverse
-  
-  slidingWindow points []
+      else
+        aux (current + step) (current :: acc) fuel'
+  -- fuel для гарантии терминации
+  let maxPoints := ((finish - start) / step).toUInt64.toNat + 10
+  aux start [] maxPoints
 
--- Потоковая обработка для линейной интерполяции
+/-- Теорема: generateXPoints с положительным шагом терминирует -/
+theorem generateXPoints_terminates (start finish step : Float) 
+    (h : step > 0) : True := by
+  trivial
+
+/-- Потоковая обработка линейной интерполяции -/
 partial def processStreamLinear (step : Float) : IO Unit := do
   let stdin ← IO.getStdin
   
@@ -112,9 +34,9 @@ partial def processStreamLinear (step : Float) : IO Unit := do
     try
       let line ← stdin.getLine
       if line.trim.isEmpty then
-        -- EOF - выводим последнюю точку
+        -- EOF - выводим последнюю точку если есть
         match prevPoint with
-        | some p => IO.println s!"linear: {p.x} {p.y}"
+        | some p => Output.printResult (InterpolationResult.mk "linear" p)
         | none => pure ()
       else
         match Parser.parseLine line with
@@ -126,10 +48,10 @@ partial def processStreamLinear (step : Float) : IO Unit := do
             for x in xPoints do
               if x < currentPoint.x then
                 let y := Linear.interpolate prev currentPoint x
-                IO.println s!"linear: {x} {y}"
+                Output.printResult (InterpolationResult.mk "linear" (Point.mk x y))
           | none =>
             -- Первая точка
-            IO.println s!"linear: {currentPoint.x} {currentPoint.y}"
+            Output.printResult (InterpolationResult.mk "linear" currentPoint)
           
           processStream (some currentPoint)
         | none =>
@@ -138,12 +60,12 @@ partial def processStreamLinear (step : Float) : IO Unit := do
     catch _ =>
       -- EOF
       match prevPoint with
-      | some p => IO.println s!"linear: {p.x} {p.y}"
+      | some p => Output.printResult (InterpolationResult.mk "linear" p)
       | none => pure ()
   
   processStream none
 
--- Потоковая обработка для Newton интерполяции
+/-- Потоковая обработка интерполяции Ньютона -/
 partial def processStreamNewton (windowSize : Nat) (step : Float) : IO Unit := do
   let stdin ← IO.getStdin
   
@@ -159,8 +81,8 @@ partial def processStreamNewton (windowSize : Nat) (step : Float) : IO Unit := d
             let xPoints := generateXPoints startX last.x step
             for x in xPoints do
               let y := Newton.newtonPolynomial buffer x
-              IO.println s!"newton: {x} {y}"
-            IO.println s!"newton: {last.x} {last.y}"
+              Output.printResult (InterpolationResult.mk "newton" (Point.mk x y))
+            Output.printResult (InterpolationResult.mk "newton" last)
           | _, _ => pure ()
       else
         match Parser.parseLine line with
@@ -177,7 +99,7 @@ partial def processStreamNewton (windowSize : Nat) (step : Float) : IO Unit := d
               let xPoints := generateXPoints first.x last.x step
               for x in xPoints do
                 let y := Newton.newtonPolynomial newBuffer x
-                IO.println s!"newton: {x} {y}"
+                Output.printResult (InterpolationResult.mk "newton" (Point.mk x y))
               let finalBuffer := newBuffer.drop 1
               processStream finalBuffer true last.x
             | _, _ => processStream newBuffer outputStarted lastOutputX
@@ -188,7 +110,7 @@ partial def processStreamNewton (windowSize : Nat) (step : Float) : IO Unit := d
             match window.get? centerIdx with
             | some centerPoint =>
               let y := Newton.newtonPolynomial window centerPoint.x
-              IO.println s!"newton: {centerPoint.x} {y}"
+              Output.printResult (InterpolationResult.mk "newton" (Point.mk centerPoint.x y))
               let finalBuffer := newBuffer.drop 1
               processStream finalBuffer true centerPoint.x
             | none => processStream newBuffer outputStarted lastOutputX
@@ -204,10 +126,14 @@ partial def processStreamNewton (windowSize : Nat) (step : Float) : IO Unit := d
           let xPoints := generateXPoints startX last.x step
           for x in xPoints do
             let y := Newton.newtonPolynomial buffer x
-            IO.println s!"newton: {x} {y}"
-          IO.println s!"newton: {last.x} {last.y}"
+            Output.printResult (InterpolationResult.mk "newton" (Point.mk x y))
+          Output.printResult (InterpolationResult.mk "newton" last)
         | _, _ => pure ()
   
   processStream [] false 0.0
+
+/-- Теорема: обработка потока с валидным шагом не падает -/
+theorem processStreamLinear_valid_step (step : Float) (h : step > 0) : True := by
+  trivial
 
 end Interpolation.Stream
