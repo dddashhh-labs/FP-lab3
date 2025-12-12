@@ -10,9 +10,15 @@ structure Config where
   method : List String
   step : Float
   windowSize : Nat
-  stepPositive : 0 < step := by native_decide
-  windowSizePositive : 0 < windowSize := by native_decide
-deriving Repr, Inhabited
+deriving Repr
+
+-- Экземпляр Inhabited для Config
+instance : Inhabited Config where
+  default := {
+    method := []
+    step := 1.0
+    windowSize := 4
+  }
 
 structure InterpolationResult where
   method : String
@@ -22,7 +28,9 @@ deriving Repr
 -- Доказательство, что список точек отсортирован
 def IsSorted (points : List Point) : Prop :=
   ∀ i j, i < j → j < points.length → 
-    (points.get ⟨i, by omega⟩).x ≤ (points.get ⟨j, by omega⟩).x
+    match points[i]?, points[j]? with
+    | some pi, some pj => pi.x ≤ pj.x
+    | _, _ => True
 
 -- Доказательство, что точка находится в диапазоне
 def InRange (p : Point) (points : List Point) : Prop :=
