@@ -1,64 +1,119 @@
-import Interpolation.Types
+namespace Interpolation
 
-namespace Interpolation.Parser
-open Interpolation
+/-- Точка на плоскости -/
+structure Point where
+  x : Float
+  y : Float
+deriving Repr, BEq, Inhabited
 
-/-- Парсинг строки в Float -/
-def parseFloat (s : String) : Option Float :=
-  let trimmed := s.trim
-  if trimmed.isEmpty then none
+/-- Конфигурация программы из аргументов командной строки -/
+structure Config where
+  method : List String
+  step : Float
+  windowSize : Nat
+deriving Repr, Inhabited
+
+/-- Результат интерполяции -/
+structure InterpolationResult where
+  method : String
+  point : Point
+deriving Repr
+
+/-- Скользящее окно для потоковой обработки -/
+structure SlidingWindow where
+  points : List Point
+  maxSize : Nat
+deriving Inhabited
+
+namespace SlidingWindow
+
+/-- Добавление точки в окно -/
+def add (window : SlidingWindow) (point : Point) : SlidingWindow :=
+  let newPoints := window.points ++ [point]
+  let finalPoints := if newPoints.length > window.maxSize then
+    newPoints.drop 1
   else
-    -- Проверяем отрицательное число
-    let (isNeg, numStr) := if trimmed.get! 0 == '-' then
-      (true, trimmed.drop 1)
-    else
-      (false, trimmed)
-    
-    match numStr.splitOn "." with
-    | [intPart, fracPart] =>
-      match intPart.toNat?, fracPart.toNat? with
-      | some i, some f =>
-        let fracLen := fracPart.length
-        let divisor := (10 ^ fracLen).toFloat
-        let result := i.toFloat + f.toFloat / divisor
-        some (if isNeg then -result else result)
-      | some i, none => some (if isNeg then -(i.toFloat) else i.toFloat)
-      | _, _ => none
-    | [intPart] =>
-      match intPart.toNat? with
-      | some i => some (if isNeg then -(i.toFloat) else i.toFloat)
-      | none => none
-    | _ => none
+    newPoints
+  SlidingWindow.mk finalPoints window.maxSize
 
-/-- Парсинг строки в точку (формат: "x;y" или "x\ty" или "x y") -/
-def parseLine (line : String) : Option Point := do
-  let line := line.trim
-  if line.isEmpty then none
-  else
-    -- Определяем разделитель
-    let parts := if line.contains ';' then
-      line.splitOn ";"
-    else if line.contains '\t' then
-      line.splitOn "\t"
-    else
-      line.splitOn " "
-    
-    -- Фильтруем пустые части и берем первые две
-    match parts.filter (fun s => !s.trim.isEmpty) with
-    | [xs, ys] =>
-      match parseFloat xs.trim, parseFloat ys.trim with
-      | some x, some y => some (Point.mk x y)
-      | _, _ => none
-    | _ => none
+/-- Проверка готовности окна (минимум 2 точки) -/
+def isReady (window : SlidingWindow) : Bool :=
+  window.points.length >= 2
 
-/-- Теорема: парсинг пустой строки возвращает none -/
-theorem parseLine_empty : parseLine "" = none := by
-  unfold parseLine
-  simp
+/-- Проверка заполненности окна -/
+def isFull (window : SlidingWindow) : Bool :=
+  window.points.length == window.maxSize
 
-/-- Теорема: parseFloat корректно обрабатывает пустую строку -/
-theorem parseFloat_empty : parseFloat "" = none := by
-  unfold parseFloat
-  simp
+/-- Вспомогательная лемма о длине списка после drop -/
+lemma length_drop_le {α : Type _} (n : Nat) (l : List α) : 
+    (l.drop n).length ≤ l.length := by
+  induction l generalizing n with
+  | nil => simp
+  | cons _ _ ih =>
+    cases n with
+    | zero => simp
+    | succ n' => 
+      simp [List.drop]
+      exact Nat.le_trans (ih n') (Nat.le_succ _)
 
-end Interpolation.Parser
+/-- Теорема: добавление точки не увеличивает размер окна больше максимума -/
+theorem add_respects_max_size (window : SlidingWindow) (point : Point) :
+    (add window point).points.length ≤ window.maxSize := by
+  unfold add
+  simp only []
+  split
+  case inl h =>
+    have h1 : (window.points ++ [point]).length = window.points.length + 1 := by
+      simp [List.length_append]
+    simp only [h1]
+    have h2 : (window.points ++ [point]).drop 1 = window.points ++ [] := by
+      cases window.points with
+      | nil => simp
+      | cons _ _ => simp [List.drop]
+    simp only [h2, List.append_nil]
+    exact Nat.le_of_lt h
+  case inr h =>
+    simp [List.length_append]
+    exact Nat.le_of_not_lt h
+
+/-- Вспомогательная лемма о том, что length списка + 1 > maxSize означает length >= maxSize -/
+lemma length_succ_gt_implies_ge {n m : Nat} : n + 1 > m → n ≥ m := by
+  intro h
+  exact Nat.le_of_lt_succ h
+
+/-- Теорема: если окно было полным, оно останется полным после добавления -/
+theorem full_stays_full (window : SlidingWindow) (point : Point) 
+    (h : isFull window) : isFull (add window point) := by
+  unfold isFull add
+  simp only [] at h ⊢
+  split
+  case inl h_gt =>
+    have h_eq : window.points.length = window.maxSize := h
+    have h1 : (window.points ++ [point]).length = window.maxSize + 1 := by
+      simp [List.length_append, h_eq]
+    simp only [h1]
+    cases window.points with
+    | nil => 
+      simp at h_eq
+      cases window.maxSize with
+      | zero => rfl
+      | succ _ => contradiction
+    | cons _ tail =>
+      simp [List.drop]
+      have : (tail ++ [point]).length + 1 = window.maxSize + 1 := by
+        simp [List.length_append]
+        have : (Point :: tail).length = window.maxSize := h
+        simp at this
+        exact this
+      simp [List.length_append] at this
+      exact Nat.add_right_cancel this
+  case inr h_not_gt =>
+    exfalso
+    have h_eq : window.points.length = window.maxSize := h
+    have : (window.points ++ [point]).length = window.maxSize + 1 := by
+      simp [List.length_append, h_eq]
+    simp [this] at h_not_gt
+
+end SlidingWindow
+
+end Interpolation
