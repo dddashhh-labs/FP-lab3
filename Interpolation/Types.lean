@@ -45,19 +45,32 @@ def isFull (window : SlidingWindow) : Bool :=
   window.points.length == window.maxSize
 
 /-- Вспомогательная лемма о длине списка после drop -/
-lemma length_drop_le {α : Type _} (n : Nat) (l : List α) :
+theorem length_drop_le {α : Type _} (n : Nat) (l : List α) :
     (l.drop n).length ≤ l.length := by
-  induction l generalizing n with
-  | nil => 
-    cases n <;> simp [List.drop]
-  | cons head tail ih =>
-    cases n with
-    | zero => simp [List.drop]
-    | succ n' => 
-      simp [List.drop]
-      calc (tail.drop n').length 
-        _ ≤ tail.length := ih n'
-        _ ≤ (head :: tail).length := by simp; apply Nat.le_succ
+  induction l generalizing n
+  case nil =>
+    cases n
+    · simp [List.drop]
+    · simp [List.drop]
+  case cons head tail ih =>
+    cases n
+    · simp [List.drop]
+    · simp [List.drop]
+      have h := ih _
+      apply Nat.le_trans h
+      apply Nat.le_succ
+
+/-- Вспомогательная лемма: если a > b, то a ≥ b -/
+theorem le_of_not_gt {a b : Nat} (h : ¬(a > b)) : a ≤ b := by
+  cases Nat.lt_or_ge a b
+  case inl hlt => exact Nat.le_of_lt hlt
+  case inr hge => 
+    cases Nat.eq_or_lt_of_le hge
+    case inl heq => rw [heq]
+    case inr hgt => 
+      exfalso
+      apply h
+      exact hgt
 
 /-- Теорема: добавление точки не увеличивает размер окна больше максимума -/
 theorem add_respects_max_size (window : SlidingWindow) (point : Point) :
@@ -67,42 +80,28 @@ theorem add_respects_max_size (window : SlidingWindow) (point : Point) :
   split
   case inl h =>
     -- h : (window.points ++ [point]).length > window.maxSize
-    have h_len : (window.points ++ [point]).length = window.points.length + 1 := by
-      rw [List.length_append, List.length_cons, List.length_nil]
-      simp
-    rw [h_len] at h
-    clear h_len
-    -- Теперь нужно показать, что (window.points ++ [point]).drop 1 имеет длину ≤ maxSize
-    have : ((window.points ++ [point]).drop 1).length ≤ (window.points ++ [point]).length := 
-      length_drop_le 1 (window.points ++ [point])
-    calc ((window.points ++ [point]).drop 1).length
-      _ ≤ (window.points ++ [point]).length := this
-      _ = window.points.length + 1 := by rw [List.length_append]; simp
-      _ ≤ window.maxSize + 1 := Nat.succ_le_succ (Nat.le_of_lt h)
-      _ = window.maxSize + 1 := rfl
-    -- Нужно более точное доказательство
-    cases window.points with
-    | nil => 
+    cases window.points
+    case nil =>
       simp [List.drop] at *
-      apply Nat.le_of_lt h
-    | cons head tail =>
+      cases window.maxSize
+      case zero => 
+        simp at h
+      case succ n =>
+        simp at h
+        exact Nat.le_refl _
+    case cons head tail =>
       simp [List.drop]
-      calc (tail ++ [point]).length
-        _ = tail.length + 1 := by rw [List.length_append]; simp
-        _ = (head :: tail).length := by simp
-        _ < window.maxSize + 1 := h
-        _ = window.maxSize + 1 := rfl
-      apply Nat.le_of_lt
-      calc tail.length + 1
-        _ = (head :: tail).length := by simp
-        _ < window.maxSize + 1 := h
-        _ = window.maxSize.succ := rfl
-      apply Nat.lt_succ_iff.mp
-      exact h
+      have h_len : (head :: tail ++ [point]).length = (head :: tail).length + 1 := by
+        simp [List.length_append]
+      rw [h_len] at h
+      simp [List.length_append]
+      have : tail.length + 1 = (head :: tail).length := by simp
+      rw [← this]
+      apply Nat.le_of_succ_le_succ
+      exact Nat.le_of_lt h
   case inr h =>
     -- h : ¬(window.points ++ [point]).length > window.maxSize
-    have : (window.points ++ [point]).length ≤ window.maxSize := Nat.le_of_not_lt h
-    exact this
+    exact le_of_not_gt h
 
 /-- Теорема: если окно было полным, оно останется полным после добавления -/
 theorem full_stays_full (window : SlidingWindow) (point : Point) 
@@ -114,31 +113,35 @@ theorem full_stays_full (window : SlidingWindow) (point : Point)
   split
   case inl h_gt =>
     -- h_gt : (window.points ++ [point]).length > window.maxSize
-    cases window.points with
-    | nil => 
+    cases window.points
+    case nil =>
       simp at h_eq
       subst h_eq
       simp [List.drop] at *
       exact h
-    | cons head tail =>
+    case cons head tail =>
       simp [List.drop]
       have h1 : (head :: tail).length = window.maxSize := h_eq
       simp at h1
       have h2 : (tail ++ [point]).length = tail.length + 1 := by 
-        rw [List.length_append]; simp
+        rw [List.length_append]
+        simp
       rw [h2, h1]
-      apply Nat.succ_pred_eq_of_pos
-      cases window.maxSize with
-      | zero => simp at h1
-      | succ n => apply Nat.succ_pos
+      cases window.maxSize
+      case zero => 
+        simp at h1
+      case succ n =>
+        simp
+        exact Nat.eq_of_beq_eq_true rfl
   case inr h_not_gt =>
     -- h_not_gt : ¬(window.points ++ [point]).length > window.maxSize
     exfalso
     have h_len : (window.points ++ [point]).length = window.points.length + 1 := by
-      rw [List.length_append]; simp
+      rw [List.length_append]
+      simp
     rw [h_len, h_eq] at h_not_gt
     apply h_not_gt
-    apply Nat.lt_succ_self
+    exact Nat.lt_succ_self _
 
 end SlidingWindow
 
