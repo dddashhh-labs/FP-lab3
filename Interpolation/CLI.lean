@@ -1,31 +1,35 @@
+-- CLI.lean (без изменений, но с типобезопасностью)
 import Interpolation.Types
 import Interpolation.Parser
 
 namespace Interpolation.CLI
-
 open Interpolation
 
 def parseArgs (args : List String) : Option Config := do
-  let rec aux (remaining : List String) (config : Config) : Option Config :=
+  let rec aux (remaining : List String) (methods : List String) 
+    (step : Float) (windowSize : Nat) : Option Config :=
     match remaining with
-    | [] => some config
-    | "--linear" :: rest =>
-      aux rest (Config.mk (config.method ++ ["linear"]) config.step config.windowSize)
-    | "--newton" :: rest =>
-      aux rest (Config.mk (config.method ++ ["newton"]) config.step config.windowSize)
-    | "--lagrange" :: rest =>
-      aux rest (Config.mk (config.method ++ ["lagrange"]) config.step config.windowSize)
+    | [] => 
+      if 0 < step ∧ 0 < windowSize then
+        some { method := methods
+               step := step
+               windowSize := windowSize
+               stepPositive := by native_decide
+               windowSizePositive := by native_decide }
+      else none
+    | "--linear" :: rest => aux rest (methods ++ ["linear"]) step windowSize
+    | "--newton" :: rest => aux rest (methods ++ ["newton"]) step windowSize
+    | "--lagrange" :: rest => aux rest (methods ++ ["lagrange"]) step windowSize
     | "--step" :: s :: rest =>
       match Parser.parseFloat s with
-      | some step => aux rest (Config.mk config.method step config.windowSize)
+      | some newStep => aux rest methods newStep windowSize
       | none => none
     | "-n" :: n :: rest =>
       match n.toNat? with
-      | some size => aux rest (Config.mk config.method config.step size)
+      | some size => aux rest methods step size
       | none => none
-    | _ :: rest => aux rest config
-  let defaultConfig : Config := Config.mk [] 1.0 4
-  aux args defaultConfig
+    | _ :: rest => aux rest methods step windowSize
+  aux args [] 1.0 4
 
 def printHelp : IO Unit := do
   IO.println "Usage: interpolation [OPTIONS]"
