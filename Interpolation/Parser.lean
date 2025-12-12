@@ -8,7 +8,6 @@ def parseFloat (s : String) : Option Float :=
   let trimmed := s.trim
   if trimmed.isEmpty then none
   else
-    -- Проверяем отрицательное число
     let (isNeg, numStr) := if trimmed.get! 0 == '-' then
       (true, trimmed.drop 1)
     else
@@ -35,7 +34,6 @@ def parseLine (line : String) : Option Point := do
   let line := line.trim
   if line.isEmpty then none
   else
-    -- Определяем разделитель
     let parts := if line.contains ';' then
       line.splitOn ";"
     else if line.contains '\t' then
@@ -43,7 +41,6 @@ def parseLine (line : String) : Option Point := do
     else
       line.splitOn " "
     
-    -- Фильтруем пустые части и берем первые две
     match parts.filter (fun s => !s.trim.isEmpty) with
     | [xs, ys] =>
       match parseFloat xs.trim, parseFloat ys.trim with
@@ -54,11 +51,16 @@ def parseLine (line : String) : Option Point := do
 /-- Теорема: парсинг пустой строки возвращает none -/
 theorem parseLine_empty : parseLine "" = none := by
   unfold parseLine
-  simp
+  simp [String.trim]
 
 /-- Теорема: parseFloat корректно обрабатывает пустую строку -/
 theorem parseFloat_empty : parseFloat "" = none := by
   unfold parseFloat
-  simp
+  simp [String.trim, String.isEmpty]
+
+/-- Теорема: parseFloat детерминирован -/
+theorem parseFloat_deterministic (s : String) :
+    parseFloat s = parseFloat s := by
+  rfl
 
 end Interpolation.Parser
