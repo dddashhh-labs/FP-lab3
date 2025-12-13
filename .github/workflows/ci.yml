@@ -1,35 +1,29 @@
 name: Build and Test
-
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     steps:
     - uses: actions/checkout@v3
-    
     - name: Install Lean 4
       run: |
         curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
         echo "$HOME/.elan/bin" >> $GITHUB_PATH
-    
     - name: Build project
       run: |
+        source $HOME/.elan/env
         lake build
-    
     - name: Run tests
       run: |
+        source $HOME/.elan/env
         echo "Running linear interpolation test..."
-        echo -e "0 0\n1 1\n2 2" | ./build/bin/interpolation --linear --step 0.7
-        
+        echo -e "0 0\n1 1\n2 2" | ./.lake/build/bin/interpolation --linear --step 0.7
         echo "Running Newton interpolation test..."
-        echo -e "0 0\n1 1\n2 2\n3 3\n4 4" | ./build/bin/interpolation --newton -n 4 --step 0.5
-    
+        echo -e "0 0\n1 1\n2 2\n3 3\n4 4" | ./.lake/build/bin/interpolation --newton -n 4 --step 0.5
     - name: Check formatting
       run: |
         echo "Checking Lean formatting..."
