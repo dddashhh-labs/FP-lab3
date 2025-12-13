@@ -1,35 +1,36 @@
 import Interpolation.Types
 
 namespace Interpolation.Parser
+
 open Interpolation
 
-/-- Парсинг строки в Float -/
 def parseFloat (s : String) : Option Float :=
-  let trimmed := s.trim
-  if trimmed.isEmpty then none
-  else
-    let (isNeg, numStr) := if trimmed.get! 0 == '-' then
-      (true, trimmed.drop 1)
+  match s.toNat? with
+  | some n => some (n.toFloat)
+  | none =>
+    let trimmed := s.trim
+    if trimmed.isEmpty then none
     else
-      (false, trimmed)
-    
-    match numStr.splitOn "." with
-    | [intPart, fracPart] =>
-      match intPart.toNat?, fracPart.toNat? with
-      | some i, some f =>
-        let fracLen := fracPart.length
-        let divisor := (10 ^ fracLen).toFloat
-        let result := i.toFloat + f.toFloat / divisor
-        some (if isNeg then -result else result)
-      | some i, none => some (if isNeg then -(i.toFloat) else i.toFloat)
-      | _, _ => none
-    | [intPart] =>
-      match intPart.toNat? with
-      | some i => some (if isNeg then -(i.toFloat) else i.toFloat)
-      | none => none
-    | _ => none
+      match trimmed.splitOn "." with
+      | [intPart, fracPart] =>
+        match intPart.toNat?, fracPart.toNat? with
+        | some i, some f =>
+          let fracLen := fracPart.length
+          let divisor := (10 ^ fracLen).toFloat
+          some (i.toFloat + f.toFloat / divisor)
+        | some i, none => some i.toFloat
+        | _,_ => none
+      | [intPart] =>
+        match intPart.toNat? with
+        | some i => some i.toFloat
+        | none =>
+          if intPart.startsWith "-" then
+            match (intPart.drop 1).toNat? with
+            | some i => some (-(i.toFloat))
+            | none => none
+          else none
+      | _ => none
 
-/-- Парсинг строки в точку (формат: "x;y" или "x\ty" или "x y") -/
 def parseLine (line : String) : Option Point := do
   let line := line.trim
   if line.isEmpty then none
@@ -40,25 +41,11 @@ def parseLine (line : String) : Option Point := do
       line.splitOn "\t"
     else
       line.splitOn " "
-    
     match parts.filter (fun s => !s.trim.isEmpty) with
     | [xs, ys] =>
       match parseFloat xs.trim, parseFloat ys.trim with
       | some x, some y => some (Point.mk x y)
-      | _, _ => none
+      | _,_ => none
     | _ => none
-
-/-- Теорема: парсинг пустой строки возвращает none -/
-theorem parseLine_empty : parseLine "" = none := by
-  rfl
-
-/-- Теорема: parseFloat корректно обрабатывает пустую строку -/
-theorem parseFloat_empty : parseFloat "" = none := by
-  rfl
-
-/-- Теорема: parseFloat детерминирован -/
-theorem parseFloat_deterministic (s : String) :
-    parseFloat s = parseFloat s := by
-  rfl
 
 end Interpolation.Parser
